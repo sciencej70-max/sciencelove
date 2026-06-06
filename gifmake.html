@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>움직이는 이모티콘 만들기</title>
+    <!-- GIF 변환을 위한 외부 라이브러리 로드 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+    <style>
+        /* === 기본 스타일 초기화 및 화면 가득 채우기 === */
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #333;
+            overflow: hidden;
+        }
+
+        /* === 핵심 요구사항: 900x500 고정 비율 앱 컨테이너 === */
+        #app-container {
+            width: 900px;
+            height: 500px;
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform-origin: center center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* === 상단 헤더 영역 === */
+        #header {
+            height: 30px;
+            background-color: rgba(255, 255, 255, 0.5);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 10px;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        #title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #333;
+        }
+        #header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #copyright {
+            font-size: 8px;
+            color: rgba(0, 0, 0, 0.4);
+        }
+        #fullscreen-btn {
+            background: none;
+            border: none;
+            font-size: 14px;
+            cursor: pointer;
+            color: #555;
+            padding: 0;
+        }
+        #fullscreen-btn:hover { color: #000; }
+
+        /* === 메인 작업 영역 === */
+        #main-workspace {
+            display: flex;
+            flex: 1;
+            height: 360px;
+        }
+
+        /* 공통 패널 스타일 */
+        .side-panel {
+            width: 140px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background-color: rgba(255, 255, 255, 0.3);
+            overflow-y: auto;
+        }
+        
+        /* 스크롤바 숨기기 */
+        .side-panel::-webkit-scrollbar { display: none; }
+        .side-panel { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .tool-section-title {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 2px;
+            color: #444;
+            text-align: center;
+        }
+        
+        /* 그리드 형태의 도구 버튼 레이아웃 */
+        .tools-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        .tool-btn {
+            padding: 6px 2px;
+            border: 2px solid transparent;
+            border-radius: 5px;
+            background-color: white;
+            cursor: pointer;
+            font-size: 11px;
+            text-align: center;
+            transition: 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            white-space: nowrap;
+        }
+        .tool-btn.active {
+            border-color: #ff6b81;
+            background-color: #ffe0e6;
+            font-weight: bold;
+        }
+        .tool-btn:active { transform: scale(0.95); }
+        
+        .color-palette {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            justify-content: center;
+        }
+        .color-swatch {
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid #ddd;
+        }
+        .color-swatch.active { border-color: #ff0000; transform: scale(1.1); }
+
+        /* 커스텀 색상 선택 버튼 스타일 */
+        .custom-color-btn {
+            background: conic-gradient(red, yellow, lime, aqua, blue, magenta, red);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            text-shadow: 0px 0px 2px rgba(0,0,0,0.8);
+        }
+        
+        .thickness-control {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .thickness-control input[type=range] { width: 100%; }
+
+        /* 중앙 캔버스 영역 */
+        #canvas-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        #canvas-wrapper {
+            width: 400px;
+            height: 400px;
+            position: relative;
+            background-color: white;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            touch-action: none; 
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        #bg-canvas { pointer-events: none; } 
+        #onion-canvas { pointer-events: none; }
+        #draw-canvas { pointer-events: none; } 
+        #preview-canvas { cursor: crosshair; } 
+
+        /* 버튼 공통 스타일 */
+        .action-btn {
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            background-color: #4a69bd;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: background-color 0.2s;
+        }
+        .action-btn:hover { filter: brightness(0.9); }
+        .action-btn.play-btn { background-color: #38ada9; padding: 10px; font-size: 13px;}
+        .action-btn.save-btn { background-color: #e55039; padding: 10px; font-size: 13px;}
+        .action-btn.copy-btn { background-color: #60a3bc; }
+        .action-btn.paste-btn { background-color: #f6b93b; }
+
+        .delay-display {
+            background: white;
+            padding: 8px;
+            text-align: center;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 2px solid #ddd;
+        }
+
+        /* === 하단 프레임(컷) 타임라인 영역 === */
+        #timeline {
+            height: 110px;
+            background-color: rgba(255, 255, 255, 0.7);
+            border-top: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            gap: 10px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .frame-thumb-container {
+            width: 80px;
+            min-width: 80px;
+            height: 90px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        .frame-thumb {
+            width: 70px;
+            height: 70px;
+            background-color: white;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            position: relative;
+        }
+        .frame-thumb.active {
+            border-color: #ff6b81;
+            box-shadow: 0 0 8px #ff6b81;
+        }
+        .frame-number {
+            font-size: 10px;
+            color: #555;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            background: rgba(255,255,255,0.8);
+            padding: 1px 3px;
+            border-radius: 3px;
+        }
+        .frame-delete-btn {
+            font-size: 10px;
+            color: white;
+            background: #e55039;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            padding: 2px 5px;
+        }
+        .add-frame-btn {
+            width: 70px;
+            min-width: 70px;
+            height: 70px;
+            border: 2px dashed #888;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: #888;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .add-frame-btn:hover { background: rgba(255,255,255,0.9); }
+
+        /* === 커스텀 모달 공통 스타일 === */
+        .modal-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .hidden { display: none !important; }
+
+        /* 경고창 스타일 */
+        .alert-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 250px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            white-space: pre-line;
+        }
+        .alert-message { margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
+        .alert-btn {
+            padding: 8px 20px;
+            background-color: #4a69bd;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        /* 확인창 모달 */
+        <div id="confirm-modal" class="modal-overlay hidden">
+            <div class="alert-box">
+                <div id="confirm-message" class="alert-message">메시지 내용</div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888;" onclick="closeConfirm()">취소</button>
+                    <button class="alert-btn" style="background-color: #e55039;" onclick="executeConfirm()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- GIF 저장 옵션 모달 -->
+        <div id="save-modal" class="modal-overlay hidden">
+            <div class="alert-box" style="min-width: 360px; padding: 10px 20px;">
+                <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">GIF 저장 옵션</div>
+                
+                <div style="display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; margin-bottom: 8px; text-align: left;">
+                    <label style="font-size: 12px; color: #555; text-align: right;">파일 이름:</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="text" id="gif-filename-input" value="my_emoticon" style="flex: 1; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                        <span style="margin-left: 4px; font-size: 12px; color: #555;">.gif</span>
+                    </div>
+
+                    <label style="font-size: 12px; color: #555; text-align: right;">크기 (px):</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="number" id="save-size-input" value="400" min="100" max="2000" style="width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px; display: flex; justify-content: center;">
+                    <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; margin: 0;">
+                        <input type="checkbox" id="save-transparent-input" style="margin: 0 6px 0 0; width: 14px; height: 14px; cursor: pointer;">
+                        <span>투명 배경으로 저장하기</span>
+                    </label>
+                </div>
+                
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888; padding: 5px 15px; font-size: 12px;" onclick="closeSaveModal()">취소</button>
+                    <button class="alert-btn" style="background-color: #e55039; padding: 5px 15px; font-size: 12px;" onclick="executeSaveGIF()">저장하기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 작업 저장 모달 -->
+        <div id="project-save-modal" class="modal-overlay hidden">
+            <div class="alert-box" style="min-width: 360px; padding: 10px 20px;">
+                <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">작업 저장</div>
+                
+                <div style="display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; margin-bottom: 6px; text-align: left;">
+                    <label style="font-size: 12px; color: #555; text-align: right;">파일 이름:</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="text" id="project-filename-input" value="emoticon_project" style="flex: 1; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                        <span style="margin-left: 4px; font-size: 12px; color: #555;">.json</span>
+                    </div>
+                </div>
+                
+                <div style="font-size: 10px; color: #777; margin-bottom: 8px; line-height: 1.2; text-align: center;">* 브라우저에 따라 저장 경로를 선택할 수 있습니다.</div>
+                
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888; padding: 5px 15px; font-size: 12px;" onclick="closeProjectSaveModal()">취소</button>
+                    <button class="alert-btn" style="background-color: #8e44ad; padding: 5px 15px; font-size: 12px;" onclick="executeSaveProject()">저장하기</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="keypad-modal" class="modal-overlay hidden">
+            <div class="keypad-box">
+                <div class="keypad-header">시간 간격 입력 (ms)</div>
+                <div id="keypad-display" class="keypad-display"></div>
+                <div class="keypad-grid">
+                    <button class="keypad-btn" onclick="inputKey('7')">7</button>
+                    <button class="keypad-btn" onclick="inputKey('8')">8</button>
+                    <button class="keypad-btn" onclick="inputKey('9')">9</button>
+                    <button class="keypad-btn" onclick="inputKey('4')">4</button>
+                    <button class="keypad-btn" onclick="inputKey('5')">5</button>
+                    <button class="keypad-btn" onclick="inputKey('6')">6</button>
+                    <button class="keypad-btn" onclick="inputKey('1')">1</button>
+                    <button class="keypad-btn" onclick="inputKey('2')">2</button>
+                    <button class="keypad-btn" onclick="inputKey('3')">3</button>
+                    <button class="keypad-btn action" onclick="inputKey('C')">C</button>
+                    <button class="keypad-btn" onclick="inputKey('0')">0</button>
+                    <button class="keypad-btn action" onclick="inputKey('BS')">←</button>
+                    <button class="keypad-btn confirm" style="grid-column: span 3;" onclick="confirmKeypad()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-overlay" class="modal-overlay hidden">
+            <div class="spinner"></div>
+            <div>GIF 이미지를 만들고 있습니다...</div>
+        </div>
+
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        
+        <!-- 상단 바 -->
+        <div id="header">
+            <div id="title">움직이는 이모티콘 만들기</div>
+            <div id="header-right">
+                <span id="copyright">Copyright by sciencelove.com</span>
+                <button id="fullscreen-btn" onclick="toggleFullScreen()" title="전체화면">⛶</button>
+            </div>
+        </div>
+
+        <!-- 메인 작업 영역 -->
+        <div id="main-workspace">
+            
+            <!-- 좌측 패널 (도구 및 편집) -->
+            <div class="side-panel">
+                <div class="tool-section-title">그리기 도구</div>
+                <div class="tools-grid">
+                    <div class="tool-btn active" id="tool-pen" onclick="setTool('pen')">✏️ 펜</div>
+                    <div class="tool-btn" id="tool-eraser" onclick="setTool('eraser')">🧽 지우개</div>
+                    <div class="tool-btn" id="tool-fill" onclick="setTool('fill')">🪣 색칠</div>
+                    <div class="tool-btn" id="tool-line" onclick="setTool('line')">📏 직선</div>
+                    <div class="tool-btn" id="tool-circle" onclick="setTool('circle')">⭕ 원</div>
+                    <div class="tool-btn" id="tool-rectangle" onclick="setTool('rectangle')">□ 사각</div>
+                    <div class="tool-btn" id="tool-move" onclick="setTool('move')">🖐️ 이동</div>
+                    <div class="tool-btn" id="tool-select" onclick="setTool('select')">🔲 선택</div>
+                </div>
+
+                <!-- 선택 영역 특수 메뉴 (선택 툴 활성화 시 나타남) -->
+                <div id="selection-options" style="display: none; flex-direction: column; gap: 4px; margin-top: 8px; padding: 6px; background: rgba(255,255,255,0.6); border-radius: 5px; border: 1px dashed #4a69bd;">
+                    <div style="font-size: 11px; text-align: center; font-weight: bold; color: #333;">선택 영역 편집</div>
+                    <button class="action-btn" style="background-color: #ff7675; padding: 6px; font-size: 11px;" onclick="deleteSelection()">❌ 잘라내기</button>
+                    <button class="action-btn" style="background-color: #74b9ff; padding: 6px; font-size: 11px;" onclick="copySelectionArea()">📄 영역 복사</button>
+                    <button class="action-btn" style="background-color: #a29bfe; padding: 6px; font-size: 11px;" onclick="pasteSelectionArea()">📋 영역 붙여넣기</button>
+                </div>
+
+                <div class="tool-section-title" style="margin-top: 10px;">컷 편집</div>
+                <button class="action-btn" style="background-color: #786fa6; margin-bottom: 5px;" onclick="undo()">↩️ 되돌리기</button>
+                <button class="action-btn copy-btn" onclick="copyCurrentFrame()">📄 컷 복사하기</button>
+                <button class="action-btn paste-btn" onclick="pasteFrame()">📋 컷 붙여넣기</button>
+                
+                <button class="action-btn" style="background-color: #27ae60; margin-top: 5px;" onclick="document.getElementById('image-upload').click()">🖼️ 사진 불러오기</button>
+                <input type="file" id="image-upload" accept="image/*" style="display: none;" onchange="loadImage(event)">
+                
+                <button class="action-btn" style="margin-top: auto; background-color: #a4b0be; color:#333;" onclick="clearCanvasConfirm()">🗑️ 현재컷 지우기</button>
+            </div>
+
+            <!-- 중앙 캔버스 -->
+            <div id="canvas-area">
+                <div id="canvas-wrapper">
+                    <canvas id="bg-canvas" width="400" height="400"></canvas>
+                    <canvas id="onion-canvas" width="400" height="400"></canvas>
+                    <canvas id="draw-canvas" width="400" height="400"></canvas>
+                    <canvas id="preview-canvas" width="400" height="400"></canvas>
+                </div>
+            </div>
+
+            <!-- 우측 패널 (색상, 굵기, 애니메이션 제어) -->
+            <div class="side-panel">
+                <div class="tool-section-title">색상</div>
+                <div class="color-palette">
+                    <div class="color-swatch active" style="background-color: #000000;" onclick="setColor('#000000', this)"></div>
+                    <div class="color-swatch" style="background-color: #ffffff;" onclick="setColor('#ffffff', this)"></div>
+                    <div class="color-swatch" style="background-color: #ff0000;" onclick="setColor('#ff0000', this)"></div>
+                    <div class="color-swatch" style="background-color: #fdcb6e;" onclick="setColor('#fdcb6e', this)"></div>
+                    <div class="color-swatch" style="background-color: #00b894;" onclick="setColor('#00b894', this)"></div>
+                    <div class="color-swatch" style="background-color: #0000ff;" onclick="setColor('#0000ff', this)"></div>
+                    <div class="color-swatch" style="background-color: #e84393;" onclick="setColor('#e84393', this)"></div>
+                    
+                    <div class="color-swatch custom-color-btn" onclick="activateCustomColor(); document.getElementById('custom-color-input').click()" title="원하는 색상 선택">+</div>
+                    <input type="color" id="custom-color-input" value="#9b59b6" style="display: none;" oninput="setCustomColor(this.value)" onchange="setCustomColor(this.value)">
+                </div>
+
+                <div class="tool-section-title" style="margin-top: 10px;">굵기</div>
+                <div class="thickness-control">
+                    <input type="range" id="thickness-slider" min="1" max="30" value="5" onchange="setThickness(this.value)">
+                </div>
+
+                <hr style="width:100%; border:0; border-top:1px dashed #ccc; margin: 10px 0;">
+
+                <div class="tool-section-title">애니메이션</div>
+                <button class="action-btn play-btn" id="play-btn" onclick="togglePlay()">▶️ 재생</button>
+                
+                <div class="tool-section-title" style="margin-top: 5px;">프레임 간격 (ms)</div>
+                <div class="delay-display" id="delay-display" onclick="openKeypad()">200</div>
+                
+                <button class="action-btn save-btn" style="margin-top: 5px;" onclick="openSaveModal()">💾 GIF 저장</button>
+
+                <hr style="width:100%; border:0; border-top:1px dashed #ccc; margin: 10px 0;">
+
+                <div class="tool-section-title">작업 보관</div>
+                <button class="action-btn" style="background-color: #16a085;" onclick="createNewProjectConfirm()">📝 새로 만들기</button>
+                <button class="action-btn" style="background-color: #8e44ad;" onclick="saveProject()">📦 작업 저장</button>
+                <button class="action-btn" style="background-color: #2980b9;" onclick="document.getElementById('project-upload').click()">📂 작업 열기</button>
+                <input type="file" id="project-upload" accept=".json" style="display: none;" onchange="loadProject(event)">
+            </div>
+        </div>
+
+        <!-- 하단 프레임 타임라인 -->
+        <div id="timeline">
+            <!-- 배경 프레임 -->
+            <div class="frame-thumb-container" style="margin-right: 5px;">
+                <div class="frame-thumb" id="bg-thumb" onclick="selectBgFrame()" style="border-color: #4a69bd;">
+                    <div class="frame-number" style="background:#4a69bd; color:white;">배경</div>
+                </div>
+                <div style="font-size:10px; color:#555; text-align:center; width:100%;">공통 배경</div>
+            </div>
+            
+            <!-- 구분선 -->
+            <div style="width: 2px; height: 70px; background-color: #ccc; margin-right: 15px; margin-bottom: 15px;"></div>
+            
+            <div id="frame-list" style="display:flex; gap:10px; align-items:center;"></div>
+            <div class="add-frame-btn" onclick="addNewFrame()" title="다음 컷 추가">+</div>
+        </div>
+
+    </div>
+
+<script>
+// 모달창들을 앱 컨테이너 바깥이 아닌 안에 위치하도록 스크립트 전 최상단으로 옮겼습니다.
+const modalsHTML = `
+        <div id="alert-modal" class="modal-overlay hidden">
+            <div class="alert-box">
+                <div id="alert-message" class="alert-message">메시지 내용</div>
+                <button class="alert-btn" onclick="closeAlert()">확인</button>
+            </div>
+        </div>
+
+        <div id="confirm-modal" class="modal-overlay hidden">
+            <div class="alert-box">
+                <div id="confirm-message" class="alert-message">메시지 내용</div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888;" onclick="closeConfirm()">취소</button>
+                    <button class="alert-btn" style="background-color: #e55039;" onclick="executeConfirm()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- GIF 저장 옵션 모달 -->
+        <div id="save-modal" class="modal-overlay hidden">
+            <div class="alert-box" style="min-width: 360px; padding: 10px 20px;">
+                <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">GIF 저장 옵션</div>
+                
+                <div style="display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; margin-bottom: 8px; text-align: left;">
+                    <label style="font-size: 12px; color: #555; text-align: right;">파일 이름:</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="text" id="gif-filename-input" value="my_emoticon" style="flex: 1; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                        <span style="margin-left: 4px; font-size: 12px; color: #555;">.gif</span>
+                    </div>
+
+                    <label style="font-size: 12px; color: #555; text-align: right;">크기 (px):</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="number" id="save-size-input" value="400" min="100" max="2000" style="width: 80px; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 12px; display: flex; justify-content: center;">
+                    <label style="display: flex; align-items: center; cursor: pointer; font-size: 12px; margin: 0;">
+                        <input type="checkbox" id="save-transparent-input" style="margin: 0 6px 0 0; width: 14px; height: 14px; cursor: pointer;">
+                        <span>투명 배경으로 저장하기</span>
+                    </label>
+                </div>
+                
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888; padding: 5px 15px; font-size: 12px;" onclick="closeSaveModal()">취소</button>
+                    <button class="alert-btn" style="background-color: #e55039; padding: 5px 15px; font-size: 12px;" onclick="executeSaveGIF()">저장하기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 작업 저장 모달 -->
+        <div id="project-save-modal" class="modal-overlay hidden">
+            <div class="alert-box" style="min-width: 360px; padding: 10px 20px;">
+                <div style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">작업 저장</div>
+                
+                <div style="display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; margin-bottom: 6px; text-align: left;">
+                    <label style="font-size: 12px; color: #555; text-align: right;">파일 이름:</label>
+                    <div style="display: flex; align-items: center;">
+                        <input type="text" id="project-filename-input" value="emoticon_project" style="flex: 1; padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px;">
+                        <span style="margin-left: 4px; font-size: 12px; color: #555;">.json</span>
+                    </div>
+                </div>
+                
+                <div style="font-size: 10px; color: #777; margin-bottom: 8px; line-height: 1.2; text-align: center;">* 브라우저에 따라 저장 경로를 선택할 수 있습니다.</div>
+                
+                <div style="display: flex; gap: 8px; justify-content: center;">
+                    <button class="alert-btn" style="background-color: #888; padding: 5px 15px; font-size: 12px;" onclick="closeProjectSaveModal()">취소</button>
+                    <button class="alert-btn" style="background-color: #8e44ad; padding: 5px 15px; font-size: 12px;" onclick="executeSaveProject()">저장하기</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="keypad-modal" class="modal-overlay hidden">
+            <div class="keypad-box">
+                <div class="keypad-header">시간 간격 입력 (ms)</div>
+                <div id="keypad-display" class="keypad-display"></div>
+                <div class="keypad-grid">
+                    <button class="keypad-btn" onclick="inputKey('7')">7</button>
+                    <button class="keypad-btn" onclick="inputKey('8')">8</button>
+                    <button class="keypad-btn" onclick="inputKey('9')">9</button>
+                    <button class="keypad-btn" onclick="inputKey('4')">4</button>
+                    <button class="keypad-btn" onclick="inputKey('5')">5</button>
+                    <button class="keypad-btn" onclick="inputKey('6')">6</button>
+                    <button class="keypad-btn" onclick="inputKey('1')">1</button>
+                    <button class="keypad-btn" onclick="inputKey('2')">2</button>
+                    <button class="keypad-btn" onclick="inputKey('3')">3</button>
+                    <button class="keypad-btn action" onclick="inputKey('C')">C</button>
+                    <button class="keypad-btn" onclick="inputKey('0')">0</button>
+                    <button class="keypad-btn action" onclick="inputKey('BS')">←</button>
+                    <button class="keypad-btn confirm" style="grid-column: span 3;" onclick="confirmKeypad()">확인</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading-overlay" class="modal-overlay hidden">
+            <div class="spinner"></div>
+            <div>GIF 이미지를 만들고 있습니다...</div>
+        </div>
+`;
+document.getElementById('app-container').insertAdjacentHTML('beforeend', modalsHTML);
+
+// --- 1. 앱 스케일링 관련 변수 ---
+let scaleFactor = 1;
+
+// --- 2. 캔버스 및 DOM 요소 관련 변수 ---
+const appContainer = document.getElementById('app-container');
+const drawCanvas = document.getElementById('draw-canvas'); // 확정된 그림
+const drawCtx = drawCanvas.getContext('2d');               
+const bgCanvas = document.getElementById('bg-canvas');     // 배경
+const bgCtx = bgCanvas.getContext('2d');             
+const onionCanvas = document.getElementById('onion-canvas');// 잔상
+const onionCtx = onionCanvas.getContext('2d');             
+const previewCanvas = document.getElementById('preview-canvas'); // 도형 그리기 및 선택 미리보기용
+const previewCtx = previewCanvas.getContext('2d');
+const frameListDiv = document.getElementById('frame-list');
+
+// --- 3. 그리기 상태 제어 변수 ---
+let isDrawing = false;
+let startX = 0; let startY = 0; 
+let lastX = 0; let lastY = 0;
+let currentX = 0; let currentY = 0;
+let currentTool = 'pen';
+let currentColor = '#000000';
+let currentLineWidth = 5;
+
+// --- 4. 프레임(컷) 데이터 및 애니메이션 변수 ---
+let frames = [];
+let currentFrameIndex = -1;
+let frameDelayMs = 200;
+let isPlaying = false;
+let playTimerId = null;
+let playCurrentIndex = 0;
+
+// --- 5. 배경 데이터 변수 ---
+let bgFrameData = null;
+let isEditingBg = false;
+
+// --- 6. 프레임 복사/붙여넣기 변수 ---
+let copiedFrameData = null; 
+
+// --- 7. 키패드 변수 ---
+let currentKeypadValue = "";
+
+// --- 8. 되돌리기(Undo) 및 이동(Pan) 기능 변수 ---
+let undoStack = [];
+const panCanvas = document.createElement('canvas'); 
+panCanvas.width = 400; 
+panCanvas.height = 400;
+const panCtx = panCanvas.getContext('2d');
+
+// --- 9. 선택 툴 변수 ---
+let selectionState = 'none'; // 'none', 'selecting', 'selected', 'moving', 'resizing'
+let selRect = { x: 0, y: 0, w: 0, h: 0 };
+const selCanvas = document.createElement('canvas'); 
+const selCtx = selCanvas.getContext('2d');
+let selClipboardData = null; 
+let dragOffsetX = 0;
+let dragOffsetY = 0;
+let resizeHandle = null; 
+let resizeOrigin = { x: 0, y: 0 };
+
+function handleResize() {
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    const scaleX = windowWidth / 900;
+    const scaleY = windowHeight / 500;
+    scaleFactor = Math.min(scaleX, scaleY);
+    appContainer.style.transform = `translate(-50%, -50%) scale(${scaleFactor})`;
+}
+window.addEventListener('resize', handleResize);
+
+function init() {
+    handleResize();
+    
+    drawCtx.lineCap = 'round';
+    drawCtx.lineJoin = 'round';
+    previewCtx.lineCap = 'round';
+    previewCtx.lineJoin = 'round';
+    
+    // 배경 데이터 초기화
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 400; tempCanvas.height = 400;
+    bgFrameData = tempCanvas.toDataURL();
+    document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+    
+    addNewFrame();
+
+    previewCanvas.addEventListener('mousedown', startDrawing);
+    previewCanvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDrawing);
+
+    previewCanvas.addEventListener('touchstart', startDrawing, {passive: false});
+    previewCanvas.addEventListener('touchmove', draw, {passive: false});
+    window.addEventListener('touchend', stopDrawing);
+}
+
+function getCanvasCoordinates(e) {
+    const rect = previewCanvas.getBoundingClientRect();
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    const scaleX = previewCanvas.width / rect.width;
+    const scaleY = previewCanvas.height / rect.height;
+    return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+    };
+}
+
+// --- 색칠하기(Flood Fill) 헬퍼 함수 ---
+function hexToRgba(hex) {
+    let c;
+    if(/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)){
+        c = hex.substring(1).split('');
+        if(c.length === 3){ c = [c[0], c[0], c[1], c[1], c[2], c[2]]; }
+        c = '0x' + c.join('');
+        return [(c>>16)&255, (c>>8)&255, c&255, 255];
+    }
+    return [0,0,0,255];
+}
+
+function floodFill(ctx, startX, startY, fillColorHex, tolerance = 80) {
+    const canvasWidth = ctx.canvas.width;
+    const canvasHeight = ctx.canvas.height;
+    const imageData = ctx.getImageData(0, 0, canvasWidth, canvasHeight);
+    const data = imageData.data;
+
+    if (startX < 0 || startX >= canvasWidth || startY < 0 || startY >= canvasHeight) return;
+
+    const startPos = (startY * canvasWidth + startX) * 4;
+    const startR = data[startPos];
+    const startG = data[startPos + 1];
+    const startB = data[startPos + 2];
+    const startA = data[startPos + 3];
+
+    const fillRgba = hexToRgba(fillColorHex);
+
+    if (Math.abs(startR - fillRgba[0]) <= tolerance &&
+        Math.abs(startG - fillRgba[1]) <= tolerance &&
+        Math.abs(startB - fillRgba[2]) <= tolerance &&
+        Math.abs(startA - fillRgba[3]) <= tolerance) {
+        return;
+    }
+
+    const matchColor = (pos) => {
+        if (pos < 0 || pos >= data.length) return false;
+        return Math.abs(data[pos] - startR) <= tolerance &&
+               Math.abs(data[pos+1] - startG) <= tolerance &&
+               Math.abs(data[pos+2] - startB) <= tolerance &&
+               Math.abs(data[pos+3] - startA) <= tolerance;
+    };
+
+    const stack = [[startX, startY]];
+    while (stack.length > 0) {
+        let [x, y] = stack.pop();
+        let currentPos = (y * canvasWidth + x) * 4;
+
+        while (y >= 0 && matchColor(currentPos)) {
+            y--;
+            currentPos -= canvasWidth * 4;
+        }
+        y++;
+        currentPos += canvasWidth * 4;
+
+        let reachLeft = false;
+        let reachRight = false;
+
+        while (y < canvasHeight && matchColor(currentPos)) {
+            data[currentPos] = fillRgba[0];
+            data[currentPos + 1] = fillRgba[1];
+            data[currentPos + 2] = fillRgba[2];
+            data[currentPos + 3] = fillRgba[3];
+
+            if (x > 0) {
+                if (matchColor(currentPos - 4)) {
+                    if (!reachLeft) { stack.push([x - 1, y]); reachLeft = true; }
+                } else if (reachLeft) { reachLeft = false; }
+            }
+
+            if (x < canvasWidth - 1) {
+                if (matchColor(currentPos + 4)) {
+                    if (!reachRight) { stack.push([x + 1, y]); reachRight = true; }
+                } else if (reachRight) { reachRight = false; }
+            }
+
+            y++;
+            currentPos += canvasWidth * 4;
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function getResizeHandle(x, y) {
+    const margin = 15; 
+    const handles = {
+        'tl': { x: selRect.x, y: selRect.y },
+        'tr': { x: selRect.x + selRect.w, y: selRect.y },
+        'bl': { x: selRect.x, y: selRect.y + selRect.h },
+        'br': { x: selRect.x + selRect.w, y: selRect.y + selRect.h }
+    };
+    for (let key in handles) {
+        if (Math.abs(x - handles[key].x) <= margin && Math.abs(y - handles[key].y) <= margin) {
+            return key;
+        }
+    }
+    return null;
+}
+
+function startDrawing(e) {
+    if (isPlaying) return;
+    if (e.type === 'touchstart') e.preventDefault();
+
+    const pos = getCanvasCoordinates(e);
+
+    if (currentTool === 'fill') {
+        floodFill(drawCtx, Math.round(pos.x), Math.round(pos.y), currentColor);
+        autoSaveCurrentFrame();
+        if (!isEditingBg) updateThumbnail(currentFrameIndex);
+        saveStateForUndo();
+        return; 
+    }
+    
+    isDrawing = true;
+    
+    startX = pos.x; startY = pos.y;
+    lastX = pos.x; lastY = pos.y;
+    currentX = pos.x; currentY = pos.y;
+    
+    if (currentTool === 'select') {
+        if (selectionState === 'selected' || selectionState === 'moving' || selectionState === 'resizing') {
+            let handle = getResizeHandle(pos.x, pos.y);
+            if (handle) {
+                selectionState = 'resizing';
+                resizeHandle = handle;
+                resizeOrigin = {
+                    x: resizeHandle.includes('l') ? selRect.x + selRect.w : selRect.x,
+                    y: resizeHandle.includes('t') ? selRect.y + selRect.h : selRect.y
+                };
+                return;
+            }
+
+            if (pos.x >= selRect.x && pos.x <= selRect.x + selRect.w &&
+                pos.y >= selRect.y && pos.y <= selRect.y + selRect.h) {
+                selectionState = 'moving';
+                dragOffsetX = pos.x - selRect.x;
+                dragOffsetY = pos.y - selRect.y;
+            } else {
+                commitSelection();
+                selectionState = 'selecting';
+                startX = pos.x; startY = pos.y;
+            }
+        } else {
+            selectionState = 'selecting';
+            startX = pos.x; startY = pos.y;
+        }
+        return; 
+    }
+    
+    if (currentTool === 'move') {
+        panCtx.clearRect(0, 0, panCanvas.width, panCanvas.height);
+        panCtx.drawImage(drawCanvas, 0, 0);
+    } 
+    else if (currentTool === 'pen' || currentTool === 'eraser') {
+        drawCtx.beginPath();
+        drawCtx.arc(lastX, lastY, currentLineWidth / 2, 0, Math.PI * 2);
+        drawCtx.fillStyle = currentTool === 'eraser' ? '#ffffff' : currentColor;
+        
+        if(currentTool === 'eraser') {
+            drawCtx.globalCompositeOperation = "destination-out";
+            drawCtx.fill();
+            drawCtx.globalCompositeOperation = "source-over";
+        } else {
+            drawCtx.fill();
+        }
+    }
+}
+
+function draw(e) {
+    if (!isDrawing || isPlaying) return;
+    if (e.type === 'touchmove') e.preventDefault();
+
+    const pos = getCanvasCoordinates(e);
+    currentX = pos.x;
+    currentY = pos.y;
+    
+    if (currentTool === 'select') {
+        if (selectionState === 'selecting') {
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            previewCtx.beginPath();
+            previewCtx.setLineDash([5, 5]);
+            previewCtx.strokeStyle = '#2980b9';
+            previewCtx.lineWidth = 1;
+            let w = pos.x - startX;
+            let h = pos.y - startY;
+            previewCtx.rect(startX, startY, w, h);
+            previewCtx.stroke();
+            previewCtx.setLineDash([]);
+        } else if (selectionState === 'moving') {
+            selRect.x = pos.x - dragOffsetX;
+            selRect.y = pos.y - dragOffsetY;
+            drawSelectionPreview();
+        } else if (selectionState === 'resizing') {
+            let x1 = pos.x; let y1 = pos.y;
+            let x2 = resizeOrigin.x; let y2 = resizeOrigin.y;
+            
+            selRect.x = Math.min(x1, x2);
+            selRect.y = Math.min(y1, y2);
+            selRect.w = Math.max(Math.abs(x1 - x2), 5); 
+            selRect.h = Math.max(Math.abs(y1 - y2), 5); 
+            
+            drawSelectionPreview();
+        }
+        return;
+    }
+
+    if (currentTool === 'move') {
+        let dx = pos.x - startX;
+        let dy = pos.y - startY;
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        drawCtx.drawImage(panCanvas, dx, dy);
+    } else if (currentTool === 'pen' || currentTool === 'eraser') {
+        drawCtx.beginPath();
+        drawCtx.moveTo(lastX, lastY);
+        drawCtx.lineTo(pos.x, pos.y);
+        drawCtx.lineWidth = currentLineWidth;
+        
+        if (currentTool === 'eraser') {
+            drawCtx.globalCompositeOperation = "destination-out";
+            drawCtx.strokeStyle = "rgba(0,0,0,1)"; 
+            drawCtx.stroke();
+            drawCtx.globalCompositeOperation = "source-over";
+        } else {
+            drawCtx.strokeStyle = currentColor;
+            drawCtx.stroke();
+        }
+        lastX = pos.x;
+        lastY = pos.y;
+    } else {
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        previewCtx.beginPath();
+        previewCtx.lineWidth = currentLineWidth;
+        previewCtx.strokeStyle = currentColor;
+
+        if (currentTool === 'line') {
+            previewCtx.moveTo(startX, startY);
+            previewCtx.lineTo(pos.x, pos.y);
+        } else if (currentTool === 'circle') {
+            const radius = Math.sqrt(Math.pow(pos.x - startX, 2) + Math.pow(pos.y - startY, 2));
+            previewCtx.arc(startX, startY, radius, 0, Math.PI * 2);
+        } else if (currentTool === 'rectangle') {
+            previewCtx.rect(startX, startY, pos.x - startX, pos.y - startY);
+        } else if (currentTool === 'triangle') {
+            previewCtx.moveTo(startX, startY);
+            previewCtx.lineTo(pos.x, pos.y);
+            previewCtx.lineTo(startX - (pos.x - startX), pos.y);
+            previewCtx.closePath();
+        }
+        previewCtx.stroke();
+    }
+}
+
+function stopDrawing() {
+    if (isDrawing && !isPlaying) {
+        isDrawing = false;
+        let hasChanged = false;
+
+        if (currentTool === 'select') {
+            if (selectionState === 'selecting') {
+                const rectW = Math.abs(currentX - startX);
+                const rectH = Math.abs(currentY - startY);
+                const rectX = Math.min(startX, currentX);
+                const rectY = Math.min(startY, currentY);
+
+                if (rectW > 5 && rectH > 5) {
+                    selRect = { x: rectX, y: rectY, w: rectW, h: rectH };
+                    
+                    selCanvas.width = rectW;
+                    selCanvas.height = rectH;
+                    selCtx.clearRect(0, 0, rectW, rectH);
+                    selCtx.drawImage(drawCanvas, rectX, rectY, rectW, rectH, 0, 0, rectW, rectH);
+                    drawCtx.clearRect(rectX, rectY, rectW, rectH);
+                    
+                    selectionState = 'selected';
+                    drawSelectionPreview();
+                } else {
+                    selectionState = 'none';
+                    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                }
+            } else if (selectionState === 'moving' || selectionState === 'resizing') {
+                selectionState = 'selected';
+                drawSelectionPreview();
+            }
+            return; 
+        }
+
+        if (currentTool !== 'pen' && currentTool !== 'eraser' && currentTool !== 'move') {
+            drawCtx.drawImage(previewCanvas, 0, 0);
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            hasChanged = true;
+        } else {
+            hasChanged = true;
+        }
+
+        autoSaveCurrentFrame();
+        updateThumbnail(currentFrameIndex);
+        if (hasChanged) saveStateForUndo();
+    }
+}
+
+function drawSelectionPreview() {
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    previewCtx.drawImage(selCanvas, 0, 0, selCanvas.width, selCanvas.height, selRect.x, selRect.y, selRect.w, selRect.h);
+    
+    previewCtx.beginPath();
+    previewCtx.setLineDash([5, 5]);
+    previewCtx.strokeStyle = '#2980b9'; 
+    previewCtx.lineWidth = 1.5;
+    previewCtx.rect(selRect.x, selRect.y, selRect.w, selRect.h);
+    previewCtx.stroke();
+    previewCtx.setLineDash([]);
+    
+    const handles = [
+        {x: selRect.x, y: selRect.y},
+        {x: selRect.x + selRect.w, y: selRect.y},
+        {x: selRect.x, y: selRect.y + selRect.h},
+        {x: selRect.x + selRect.w, y: selRect.y + selRect.h}
+    ];
+    previewCtx.fillStyle = '#ffffff';
+    previewCtx.strokeStyle = '#2980b9';
+    previewCtx.lineWidth = 2;
+    handles.forEach(h => {
+        previewCtx.beginPath();
+        previewCtx.rect(h.x - 5, h.y - 5, 10, 10);
+        previewCtx.fill();
+        previewCtx.stroke();
+    });
+}
+
+function commitSelection() {
+    if (selectionState === 'selected' || selectionState === 'moving' || selectionState === 'resizing') {
+        drawCtx.drawImage(selCanvas, 0, 0, selCanvas.width, selCanvas.height, selRect.x, selRect.y, selRect.w, selRect.h);
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        selectionState = 'none';
+        
+        autoSaveCurrentFrame();
+        if (!isEditingBg) updateThumbnail(currentFrameIndex);
+        saveStateForUndo();
+    }
+}
+
+function deleteSelection() {
+    if (selectionState === 'selected' || selectionState === 'moving' || selectionState === 'resizing') {
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        selectionState = 'none'; 
+        autoSaveCurrentFrame();
+        if (!isEditingBg) updateThumbnail(currentFrameIndex);
+        saveStateForUndo();
+    } else {
+        showAlert("먼저 삭제할 영역을 드래그해서 선택하세요.");
+    }
+}
+
+function copySelectionArea() {
+    if (selectionState === 'selected' || selectionState === 'moving' || selectionState === 'resizing') {
+        selClipboardData = selCanvas.toDataURL();
+        showAlert("선택 영역이 복사되었습니다.");
+    } else {
+        showAlert("먼저 복사할 영역을 드래그해서 선택하세요.");
+    }
+}
+
+function pasteSelectionArea() {
+    if (!selClipboardData) {
+        showAlert("복사된 영역이 없습니다.");
+        return;
+    }
+    
+    commitSelection();
+    setTool('select');
+    
+    let img = new Image();
+    img.onload = function() {
+        selRect.w = img.width;
+        selRect.h = img.height;
+        selRect.x = (drawCanvas.width - selRect.w) / 2; 
+        selRect.y = (drawCanvas.height - selRect.h) / 2;
+        
+        selCanvas.width = selRect.w;
+        selCanvas.height = selRect.h;
+        selCtx.clearRect(0, 0, selRect.w, selRect.h);
+        selCtx.drawImage(img, 0, 0);
+        
+        selectionState = 'selected';
+        drawSelectionPreview();
+    };
+    img.src = selClipboardData;
+}
+
+function loadImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (isPlaying) {
+        showAlert("재생 중에는 사진을 불러올 수 없습니다.");
+        event.target.value = ''; 
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+            commitSelection();
+            setTool('select');
+            
+            selCanvas.width = img.width;
+            selCanvas.height = img.height;
+            selCtx.clearRect(0, 0, img.width, img.height);
+            selCtx.drawImage(img, 0, 0);
+
+            let targetW = img.width;
+            let targetH = img.height;
+            const maxDim = 380; 
+            
+            if (targetW > maxDim || targetH > maxDim) {
+                if (targetW > targetH) {
+                    targetH = targetH * (maxDim / targetW);
+                    targetW = maxDim;
+                } else {
+                    targetW = targetW * (maxDim / targetH);
+                    targetH = maxDim;
+                }
+            }
+            
+            selRect.w = targetW;
+            selRect.h = targetH;
+            selRect.x = (drawCanvas.width - selRect.w) / 2;
+            selRect.y = (drawCanvas.height - selRect.h) / 2;
+            
+            selectionState = 'selected';
+            drawSelectionPreview();
+            
+            event.target.value = '';
+        };
+        img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+}
+
+function saveStateForUndo() {
+    if (undoStack.length > 20) undoStack.shift(); 
+    undoStack.push(drawCanvas.toDataURL('image/png'));
+}
+
+function resetUndoStack(initialData) {
+    undoStack = [];
+    if (initialData) {
+        undoStack.push(initialData);
+    } else {
+        undoStack.push(drawCanvas.toDataURL('image/png'));
+    }
+}
+
+function undo() {
+    if (isPlaying || currentFrameIndex === -1) return;
+    
+    if (selectionState !== 'none') {
+        selectionState = 'none';
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    }
+    
+    if (undoStack.length > 1) {
+        undoStack.pop(); 
+        const prevState = undoStack[undoStack.length - 1]; 
+        
+        let img = new Image();
+        img.onload = function() {
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            drawCtx.drawImage(img, 0, 0);
+            autoSaveCurrentFrame();
+            updateThumbnail(currentFrameIndex);
+        };
+        img.src = prevState;
+    } else {
+        showAlert("더 이상 되돌릴 수 없습니다.");
+    }
+}
+
+function autoSaveCurrentFrame() {
+    if (isEditingBg) {
+        bgFrameData = drawCanvas.toDataURL('image/png');
+        document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+    } else if (currentFrameIndex >= 0 && currentFrameIndex < frames.length) {
+        frames[currentFrameIndex] = drawCanvas.toDataURL('image/png');
+    }
+}
+
+function clearCanvasConfirm() {
+    if (isPlaying) return;
+    commitSelection();
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    autoSaveCurrentFrame();
+    if (!isEditingBg) updateThumbnail(currentFrameIndex);
+    saveStateForUndo(); 
+}
+
+function setTool(toolName) {
+    commitSelection();
+    currentTool = toolName;
+    const btns = document.querySelectorAll('.tool-btn');
+    btns.forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tool-' + toolName).classList.add('active');
+
+    const selOptions = document.getElementById('selection-options');
+    if (toolName === 'select') {
+        selOptions.style.display = 'flex';
+    } else {
+        selOptions.style.display = 'none';
+    }
+}
+
+function setColor(color, element) {
+    if (currentTool === 'eraser') setTool('pen'); 
+    currentColor = color;
+    const swatches = document.querySelectorAll('.color-swatch');
+    swatches.forEach(sw => sw.classList.remove('active'));
+    element.classList.add('active');
+}
+
+function activateCustomColor() {
+    const colorInput = document.getElementById('custom-color-input');
+    setCustomColor(colorInput.value);
+}
+
+function setCustomColor(color) {
+    if (currentTool === 'eraser') setTool('pen'); 
+    currentColor = color;
+    const swatches = document.querySelectorAll('.color-swatch');
+    swatches.forEach(sw => sw.classList.remove('active'));
+    
+    const customBtn = document.querySelector('.custom-color-btn');
+    customBtn.classList.add('active');
+    customBtn.style.background = color;
+}
+
+function setThickness(val) {
+    currentLineWidth = parseInt(val);
+}
+
+function copyCurrentFrame() {
+    if (isPlaying || (currentFrameIndex === -1 && !isEditingBg)) return;
+    commitSelection();
+    autoSaveCurrentFrame(); 
+    copiedFrameData = isEditingBg ? bgFrameData : frames[currentFrameIndex];
+    showAlert("현재 컷이 통째로 복사되었습니다.\n붙여넣을 컷을 선택한 후 '컷 붙여넣기' 버튼을 누르세요.");
+}
+
+function pasteFrame() {
+    if (isPlaying || (currentFrameIndex === -1 && !isEditingBg)) return;
+    if (!copiedFrameData) {
+        showAlert("복사된 컷이 없습니다.\n먼저 '컷 복사하기'를 해주세요.");
+        return;
+    }
+    
+    commitSelection();
+    
+    if (isEditingBg) {
+        bgFrameData = copiedFrameData;
+        document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+    } else {
+        frames[currentFrameIndex] = copiedFrameData;
+        updateThumbnail(currentFrameIndex);
+    }
+    
+    let img = new Image();
+    img.onload = function() {
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+        drawCtx.drawImage(img, 0, 0);
+        autoSaveCurrentFrame();
+        saveStateForUndo(); 
+    };
+    img.src = copiedFrameData;
+}
+
+function updateBackgroundCanvas() {
+    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    if (!isEditingBg && bgFrameData) {
+        let img = new Image();
+        img.onload = () => bgCtx.drawImage(img, 0, 0);
+        img.src = bgFrameData;
+    }
+}
+
+function selectBgFrame() {
+    if (isPlaying || isEditingBg) return;
+    commitSelection();
+    autoSaveCurrentFrame();
+    isEditingBg = true;
+    
+    bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+    onionCtx.clearRect(0, 0, onionCanvas.width, onionCanvas.height);
+    
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    if (bgFrameData) {
+        let img = new Image();
+        img.onload = () => drawCtx.drawImage(img, 0, 0);
+        img.src = bgFrameData;
+    }
+    
+    renderTimeline();
+    resetUndoStack(bgFrameData);
+}
+
+function addNewFrame() {
+    if (isPlaying) return;
+    commitSelection();
+    if (currentFrameIndex !== -1 || isEditingBg) autoSaveCurrentFrame();
+
+    isEditingBg = false;
+    const blankCanvas = document.createElement('canvas');
+    blankCanvas.width = drawCanvas.width;
+    blankCanvas.height = drawCanvas.height;
+    const blankData = blankCanvas.toDataURL();
+    
+    frames.push(blankData);
+    currentFrameIndex = frames.length - 1;
+    
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    updateBackgroundCanvas();
+    renderTimeline();
+    updateOnionSkin();
+    resetUndoStack(blankData);
+}
+
+function selectFrame(index) {
+    if (isPlaying || (index === currentFrameIndex && !isEditingBg)) return;
+    commitSelection();
+    autoSaveCurrentFrame();
+    isEditingBg = false;
+    currentFrameIndex = index;
+    loadFrameToCanvas(index);
+    updateBackgroundCanvas();
+    renderTimeline();
+    updateOnionSkin();
+    resetUndoStack(frames[index]); 
+}
+
+function deleteFrame(index, event) {
+    event.stopPropagation();
+    if (isPlaying || frames.length <= 1) {
+        showAlert("최소 1개의 컷은 있어야 합니다.");
+        return;
+    }
+    commitSelection();
+    frames.splice(index, 1);
+    if (currentFrameIndex >= frames.length) {
+        currentFrameIndex = frames.length - 1;
+    } else if (currentFrameIndex > index) {
+        currentFrameIndex--;
+    }
+    loadFrameToCanvas(currentFrameIndex);
+    renderTimeline();
+    updateOnionSkin();
+}
+
+function loadFrameToCanvas(index) {
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    if (frames[index]) {
+        let img = new Image();
+        img.onload = function() {
+            drawCtx.drawImage(img, 0, 0);
+        };
+        img.src = frames[index];
+    }
+}
+
+function updateOnionSkin() {
+    onionCtx.clearRect(0, 0, onionCanvas.width, onionCanvas.height);
+    if (currentFrameIndex > 0 && !isPlaying && !isEditingBg) {
+        let img = new Image();
+        img.onload = function() {
+            onionCtx.globalAlpha = 0.3;
+            onionCtx.drawImage(img, 0, 0);
+            onionCtx.globalAlpha = 1.0;
+        };
+        img.src = frames[currentFrameIndex - 1];
+    }
+}
+
+function renderTimeline() {
+    const bgThumb = document.getElementById('bg-thumb');
+    if (isEditingBg) bgThumb.classList.add('active');
+    else bgThumb.classList.remove('active');
+
+    frameListDiv.innerHTML = '';
+    frames.forEach((frameData, i) => {
+        const container = document.createElement('div');
+        container.className = 'frame-thumb-container';
+        
+        const thumb = document.createElement('div');
+        thumb.className = 'frame-thumb' + (i === currentFrameIndex && !isEditingBg ? ' active' : '');
+        thumb.style.backgroundImage = `url(${frameData})`;
+        thumb.onclick = () => selectFrame(i);
+        
+        const numLabel = document.createElement('div');
+        numLabel.className = 'frame-number';
+        numLabel.innerText = i + 1;
+        
+        const delBtn = document.createElement('button');
+        delBtn.className = 'frame-delete-btn';
+        delBtn.innerText = '삭제';
+        delBtn.onclick = (e) => deleteFrame(i, e);
+        
+        thumb.appendChild(numLabel);
+        container.appendChild(thumb);
+        container.appendChild(delBtn);
+        frameListDiv.appendChild(container);
+    });
+    const timelineBox = document.getElementById('timeline');
+    timelineBox.scrollLeft = timelineBox.scrollWidth;
+}
+
+function updateThumbnail(index) {
+    if (index >= 0 && index < frames.length) {
+        const thumbs = document.querySelectorAll('#frame-list .frame-thumb');
+        if (thumbs[index]) {
+            thumbs[index].style.backgroundImage = `url(${frames[index]})`;
+        }
+    }
+}
+
+function togglePlay() {
+    const playBtn = document.getElementById('play-btn');
+    
+    if (isPlaying) {
+        clearInterval(playTimerId);
+        isPlaying = false;
+        playBtn.innerText = "▶️ 재생";
+        playBtn.style.backgroundColor = "#38ada9";
+        
+        if (isEditingBg) {
+            isEditingBg = false; 
+            selectBgFrame(); 
+        } else {
+            loadFrameToCanvas(currentFrameIndex);
+            updateOnionSkin();
+            updateBackgroundCanvas();
+        }
+    } else {
+        if (frames.length < 2) {
+            showAlert("재생하려면 컷이 2개 이상 필요합니다.");
+            return;
+        }
+        commitSelection();
+        autoSaveCurrentFrame();
+        
+        const wasEditingBg = isEditingBg;
+        isEditingBg = false; 
+        updateBackgroundCanvas();
+        isEditingBg = wasEditingBg;
+
+        isPlaying = true;
+        playBtn.innerText = "⏸️ 정지";
+        playBtn.style.backgroundColor = "#e55039";
+        onionCtx.clearRect(0, 0, onionCanvas.width, onionCanvas.height);
+        
+        playCurrentIndex = 0;
+        playTimerId = setInterval(() => {
+            loadFrameToCanvas(playCurrentIndex);
+            const thumbs = document.querySelectorAll('#frame-list .frame-thumb');
+            thumbs.forEach(t => t.classList.remove('active'));
+            if(thumbs[playCurrentIndex]) thumbs[playCurrentIndex].classList.add('active');
+            
+            playCurrentIndex++;
+            if (playCurrentIndex >= frames.length) playCurrentIndex = 0;
+        }, frameDelayMs);
+    }
+}
+
+function openSaveModal() {
+    if (frames.length === 0) return;
+    if (isPlaying) togglePlay(); 
+    commitSelection();
+    autoSaveCurrentFrame();
+    
+    document.getElementById('gif-filename-input').value = 'my_emoticon';
+    document.getElementById('save-modal').classList.remove('hidden');
+}
+
+function closeSaveModal() {
+    document.getElementById('save-modal').classList.add('hidden');
+}
+
+async function executeSaveGIF() {
+    closeSaveModal();
+    document.getElementById('loading-overlay').classList.remove('hidden');
+
+    const targetSize = parseInt(document.getElementById('save-size-input').value) || 400;
+    const isTransparent = document.getElementById('save-transparent-input').checked;
+
+    let filename = document.getElementById('gif-filename-input').value.trim();
+    if (!filename) filename = 'my_emoticon';
+    const fullName = filename.endsWith('.gif') ? filename : filename + '.gif';
+
+    try {
+        const workerString = `importScripts('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js');`;
+        const workerBlob = new Blob([workerString], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(workerBlob);
+
+        const gif = new GIF({
+            workers: 2,
+            quality: 10,
+            width: targetSize,
+            height: targetSize,
+            workerScript: workerUrl,
+            background: '#ffffff',
+            transparent: isTransparent ? 0xffffff : null
+        });
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = targetSize;
+        tempCanvas.height = targetSize;
+        const tCtx = tempCanvas.getContext('2d');
+
+        // 프레임 순회 및 렌더링
+        for (let i = 0; i < frames.length; i++) {
+            await new Promise((resolve) => {
+                let bgImg = new Image();
+                bgImg.onload = () => {
+                    let frameImg = new Image();
+                    frameImg.onload = () => {
+                        tCtx.save();
+                        tCtx.scale(targetSize / drawCanvas.width, targetSize / drawCanvas.height);
+                        
+                        tCtx.fillStyle = '#ffffff';
+                        tCtx.fillRect(0, 0, drawCanvas.width, drawCanvas.height);
+                        
+                        tCtx.drawImage(bgImg, 0, 0);
+                        tCtx.drawImage(frameImg, 0, 0);
+                        tCtx.restore(); 
+                        
+                        // 스마트폰의 GPU 렌더링 지연시간을 기다려주어 화면 누락 방지 (0.08초 강제 대기)
+                        setTimeout(() => {
+                            gif.addFrame(tempCanvas, {delay: frameDelayMs, copy: true});
+                            resolve();
+                        }, 80);
+                    };
+                    frameImg.src = frames[i] || 'data:,';
+                };
+                bgImg.src = bgFrameData || 'data:,';
+            });
+        }
+
+        // 마지막 렌더링 전 한번 더 확실한 대기 시간
+        setTimeout(() => {
+            gif.render();
+        }, 100);
+
+        gif.on('finished', async function(blob) {
+            document.getElementById('loading-overlay').classList.add('hidden');
+            
+            const file = new File([blob], fullName, { type: 'image/gif' });
+            let saved = false;
+
+            // 1. PC 환경
+            if (window.showSaveFilePicker) {
+                try {
+                    const fileHandle = await window.showSaveFilePicker({
+                        suggestedName: fullName,
+                        types: [{ description: 'GIF 이미지', accept: {'image/gif': ['.gif']} }],
+                    });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                    saved = true;
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        URL.revokeObjectURL(workerUrl);
+                        return; 
+                    }
+                }
+            }
+
+            // 2. 모바일/태블릿 환경: Web Share API (갤러리에 직접 저장 유도)
+            if (!saved && navigator.canShare && navigator.canShare({ files: [file] })) {
+                try {
+                    await navigator.share({
+                        files: [file],
+                        title: fullName
+                    });
+                    saved = true;
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        URL.revokeObjectURL(workerUrl);
+                        return;
+                    }
+                }
+            }
+
+            // 3. 기본 폴백 다운로드
+            if (!saved) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fullName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            URL.revokeObjectURL(workerUrl);
+        });
+
+    } catch (error) {
+        console.error(error);
+        document.getElementById('loading-overlay').classList.add('hidden');
+        showAlert("GIF 생성 중 오류가 발생했습니다.");
+    }
+}
+
+// --- 프로젝트 저장 및 불러오기 ---
+function saveProject() {
+    if (isPlaying) togglePlay();
+    commitSelection();
+    autoSaveCurrentFrame();
+
+    document.getElementById('project-filename-input').value = 'emoticon_project';
+    document.getElementById('project-save-modal').classList.remove('hidden');
+}
+
+function closeProjectSaveModal() {
+    document.getElementById('project-save-modal').classList.add('hidden');
+}
+
+function executeSaveProject() {
+    closeProjectSaveModal();
+    
+    let filename = document.getElementById('project-filename-input').value.trim();
+    if (!filename) filename = 'emoticon_project';
+    const fullName = filename.endsWith('.json') ? filename : filename + '.json';
+
+    const projectData = {
+        version: 1,
+        frames: frames,
+        bgFrameData: bgFrameData,
+        frameDelayMs: frameDelayMs,
+        currentFrameIndex: isEditingBg ? -1 : currentFrameIndex
+    };
+    const dataStr = JSON.stringify(projectData);
+
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fullName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function loadProject(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (isPlaying) togglePlay();
+    commitSelection();
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const projectData = JSON.parse(e.target.result);
+            if (!projectData.frames || !Array.isArray(projectData.frames)) {
+                throw new Error("유효하지 않은 프로젝트 파일입니다.");
+            }
+
+            frames = projectData.frames;
+            bgFrameData = projectData.bgFrameData || null;
+            frameDelayMs = projectData.frameDelayMs || 200;
+            document.getElementById('delay-display').innerText = frameDelayMs;
+
+            if (bgFrameData) {
+                document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+            } else {
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = 400; tempCanvas.height = 400;
+                bgFrameData = tempCanvas.toDataURL();
+                document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+            }
+
+            const targetIndex = projectData.currentFrameIndex;
+            
+            isEditingBg = (targetIndex === -1);
+            currentFrameIndex = (targetIndex >= 0 && targetIndex < frames.length) ? targetIndex : (isEditingBg ? -1 : 0);
+            
+            drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+            onionCtx.clearRect(0, 0, onionCanvas.width, onionCanvas.height);
+            bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+            
+            if (isEditingBg) {
+                if (bgFrameData) {
+                    let img = new Image();
+                    img.onload = () => drawCtx.drawImage(img, 0, 0);
+                    img.src = bgFrameData;
+                }
+                resetUndoStack(bgFrameData);
+            } else {
+                if (frames[currentFrameIndex]) {
+                    let img = new Image();
+                    img.onload = () => drawCtx.drawImage(img, 0, 0);
+                    img.src = frames[currentFrameIndex];
+                }
+                resetUndoStack(frames[currentFrameIndex]);
+                updateOnionSkin();
+            }
+            updateBackgroundCanvas();
+            renderTimeline();
+            
+            showAlert("프로젝트를 성공적으로 불러왔습니다.");
+        } catch (error) {
+            console.error(error);
+            showAlert("파일을 불러오는 중 오류가 발생했습니다.\n형식이 올바른 파일인지 확인해주세요.");
+        }
+        
+        document.getElementById('project-upload').value = ''; 
+    };
+    reader.readAsText(file);
+}
+
+function showAlert(message) {
+    document.getElementById('alert-message').innerText = message;
+    document.getElementById('alert-modal').classList.remove('hidden');
+}
+function closeAlert() {
+    document.getElementById('alert-modal').classList.add('hidden');
+}
+
+let confirmCallback = null;
+function showConfirm(message, callback) {
+    document.getElementById('confirm-message').innerText = message;
+    confirmCallback = callback;
+    document.getElementById('confirm-modal').classList.remove('hidden');
+}
+function closeConfirm() {
+    document.getElementById('confirm-modal').classList.add('hidden');
+}
+function executeConfirm() {
+    closeConfirm();
+    if (confirmCallback) confirmCallback();
+}
+
+function createNewProjectConfirm() {
+    if (isPlaying) togglePlay();
+    showConfirm("저장하지 않은 모든 컷과 배경이 삭제됩니다.\n새로 만드시겠습니까?", () => {
+        createNewProject();
+    });
+}
+
+function createNewProject() {
+    commitSelection();
+    
+    frames = [];
+    currentFrameIndex = -1;
+    isEditingBg = false;
+    undoStack = [];
+    frameDelayMs = 200;
+    document.getElementById('delay-display').innerText = frameDelayMs;
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = 400; tempCanvas.height = 400;
+    bgFrameData = tempCanvas.toDataURL();
+    document.getElementById('bg-thumb').style.backgroundImage = `url(${bgFrameData})`;
+    updateBackgroundCanvas();
+    
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    onionCtx.clearRect(0, 0, onionCanvas.width, onionCanvas.height);
+    
+    addNewFrame();
+    
+    showAlert("새 작업이 시작되었습니다.");
+}
+
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            showAlert(`전체화면 모드를 시작할 수 없습니다.`);
+        });
+    } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+    }
+}
+
+function openKeypad() {
+    if(isPlaying) return;
+    currentKeypadValue = frameDelayMs.toString();
+    updateKeypadDisplay();
+    document.getElementById('keypad-modal').classList.remove('hidden');
+}
+function inputKey(key) {
+    if (key === 'C') {
+        currentKeypadValue = "";
+    } else if (key === 'BS') {
+        currentKeypadValue = currentKeypadValue.slice(0, -1);
+    } else {
+        if (currentKeypadValue.length < 4) currentKeypadValue += key;
+    }
+    updateKeypadDisplay();
+}
+function updateKeypadDisplay() {
+    document.getElementById('keypad-display').innerText = currentKeypadValue || "0";
+}
+function confirmKeypad() {
+    let val = parseInt(currentKeypadValue);
+    if (isNaN(val) || val < 50) val = 50; 
+    if (val > 5000) val = 5000; 
+    
+    frameDelayMs = val;
+    document.getElementById('delay-display').innerText = val;
+    document.getElementById('keypad-modal').classList.add('hidden');
+}
+
+window.onload = init;
+</script>
+</body>
+</html>
